@@ -180,6 +180,15 @@ fn tokenize_mixed(s: &str) -> Vec<&str> {
                 // Standalone '#'
                 tokens.push(&s[start..i]);
             }
+        } else if c == '$' {
+            // Inline equation: keep `$...$` as one atomic token
+            let start = i;
+            i += 1;
+            match s[i..].find('$') {
+                Some(off) => i += off + 1,
+                None => i = s.len(),
+            }
+            tokens.push(&s[start..i]);
         } else if c == '@' {
             // Typst reference: @label (alphanumeric, hyphens, underscores, colons, periods)
             let start = i;
