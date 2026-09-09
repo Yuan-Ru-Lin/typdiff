@@ -137,8 +137,8 @@ fn process_replace(old_range: &[Block], new_range: &[Block], results: &mut Vec<D
 /// individual single-character token.
 ///
 /// Typst code expressions (`#func[...]`, `#func(...)`), references (`@label`),
-/// and labels (`<label>`) are treated as atomic tokens so the diff never
-/// fragments valid Typst syntax.
+/// labels (`<label>`), and inline equations (`$...$`) are treated as atomic
+/// tokens so the diff never fragments valid Typst syntax.
 ///
 /// This gives word-level granularity for Latin text while allowing
 /// character-level precision for CJK text (which has no whitespace boundaries).
@@ -180,15 +180,24 @@ fn tokenize_mixed(s: &str) -> Vec<&str> {
                 // Standalone '#'
                 tokens.push(&s[start..i]);
             }
-        } else if c == '$' && !s[..i].ends_with('\\') {
+        } else if c == '$' {
             // Inline equation: keep `$...$` as one atomic token.
-            // A `$` preceded by a backslash is an escaped
+            // A `$` preceded by an odd number of backslashes is an escaped
             // literal dollar sign in markup, not a math delimiter.
+            if !preceding_backslashes(s, i).is_multiple_of(2) {
+                tokens.push(&s[i..i + c_len]);
+                i += c_len;
+                continue;
+            }
             let start = i;
             i += 1;
-            match s[i..].find('$') {
-                Some(off) => i += off + 1,
-                None => i = s.len(),
+            while i < s.len() {
+                let next = s[i..].chars().next().unwrap();
+                if next == '$' && preceding_backslashes(s, i).is_multiple_of(2) {
+                    i += 1;
+                    break;
+                }
+                i += next.len_utf8();
             }
             tokens.push(&s[start..i]);
         } else if c == '@' {
@@ -262,6 +271,16 @@ fn skip_balanced(s: &str, start: usize, open: char, close: char) -> usize {
         i += c_len;
     }
     i
+}
+
+/// Count the backslashes immediately preceding byte position `i`.
+/// An odd count means the character at `i` is escaped.
+fn preceding_backslashes(s: &str, i: usize) -> usize {
+    s.as_bytes()[..i]
+        .iter()
+        .rev()
+        .take_while(|&&b| b == b'\\')
+        .count()
 }
 
 /// Perform mixed-granularity diff and return coalesced spans.
@@ -561,10 +580,17 @@ mod tests {
     }
 
     #[test]
-    fn test_tokenize_escaped_dollar_is_not_equation() {
+    fn test_tokenize_dollar_escaping_rules() {
+        // Escaped dollar in markup should not start an equation.
         let tokens = tokenize_mixed("\\$5 and $x$");
         assert!(tokens.contains(&"$x$"));
         assert!(!tokens.iter().any(|t| t.starts_with("$5")));
+        // Even number of backslashes means the `$` is not escaped.
+        let tokens = tokenize_mixed("\\\\$x$");
+        assert!(tokens.contains(&"$x$"));
+        // Escaped `$` inside math should not terminate the equation early.
+        let tokens = tokenize_mixed("$x \\$ y$");
+        assert_eq!(tokens, vec!["$x \\$ y$"]);
     }
 
     #[test]
