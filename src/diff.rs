@@ -180,8 +180,10 @@ fn tokenize_mixed(s: &str) -> Vec<&str> {
                 // Standalone '#'
                 tokens.push(&s[start..i]);
             }
-        } else if c == '$' {
-            // Inline equation: keep `$...$` as one atomic token
+        } else if c == '$' && !s[..i].ends_with('\\') {
+            // Inline equation: keep `$...$` as one atomic token.
+            // A `$` preceded by a backslash is an escaped
+            // literal dollar sign in markup, not a math delimiter.
             let start = i;
             i += 1;
             match s[i..].find('$') {
@@ -556,6 +558,13 @@ mod tests {
     fn test_tokenize_inline_equation_is_atomic() {
         let tokens = tokenize_mixed("is $t = 12.4 \"hour\"$ for");
         assert_eq!(tokens, vec!["is", " ", "$t = 12.4 \"hour\"$", " ", "for"]);
+    }
+
+    #[test]
+    fn test_tokenize_escaped_dollar_is_not_equation() {
+        let tokens = tokenize_mixed("\\$5 and $x$");
+        assert!(tokens.contains(&"$x$"));
+        assert!(!tokens.iter().any(|t| t.starts_with("$5")));
     }
 
     #[test]
