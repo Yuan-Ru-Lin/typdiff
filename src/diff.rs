@@ -553,6 +553,12 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_inline_equation_is_atomic() {
+        let tokens = tokenize_mixed("is $t = 12.4 \"hour\"$ for");
+        assert_eq!(tokens, vec!["is", " ", "$t = 12.4 \"hour\"$", " ", "for"]);
+    }
+
+    #[test]
     fn test_tokenize_cjk_char_level() {
         // CJK characters should be tokenized individually (no whitespace boundaries).
         let tokens = tokenize_mixed("吾輩は猫である");
